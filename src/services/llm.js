@@ -5,7 +5,7 @@ import geminiClient from './gemini.js';
 
 /**
  * AI Provider Factory
- * Switches between Anthropic (Claude) and Google (Gemini) based on configuration
+ * Switches between Anthropic and Gemini
  */
 
 class AIClientFactory {

@@ -1,0 +1,197 @@
+version: '3.8'
+
+services:
+  # Orchestration Control Plane (OCP)
+  ocp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ocp
+    container_name: self-healing-ocp
+    ports:
+      - "${OCP_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=3000
+      - REDIS_HOST=redis
+      - LIGHTPANDA_WS_ENDPOINT=ws://lightpanda:9222
+      - CODER_API_URL=http://coder:3000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - SLACK_API_URL=http://mattermost:8065/api/v4
+      - PAGERDUTY_API_URL=http://mock-pagerduty:3000 # Using a mock for now
+      # Credentials passed via env
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - PAGERDUTY_API_KEY=${PAGERDUTY_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - CODER_API_TOKEN=${CODER_API_TOKEN}
+    depends_on:
+      redis:
+        condition: service_healthy
+      lightpanda:
+        condition: service_started
+      coder:
+        condition: service_started
+      ollama:
+        condition: service_started
+    networks:
+      - self-healing-network
+    restart: unless-stopped
+
+  # Lightpanda
+  lightpanda:
+    image: lightpanda/browser:nightly
+    container_name: self-healing-lightpanda
+    ports:
+      - "${LIGHTPANDA_PORT:-9222}:9222"
+    networks:
+      - self-healing-network
+    restart: unless-stopped
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: self-healing-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - self-healing-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Coder (Self-hosted)
+  coder:
+    image: ghcr.io/coder/coder:latest
+    container_name: self-healing-coder
+    ports:
+      - "7080:3000"
+    environment:
+      CODER_ACCESS_URL: "http://localhost:7080"
+      CODER_PG_CONNECTION_URL: "postgresql://coder:coder@coder-db:5432/coder?sslmode=disable"
+      CODER_HTTP_ADDRESS: "0.0.0.0:3000"
+    depends_on:
+      coder-db:
+        condition: service_healthy
+    volumes:
+      - coder-data:/home/coder/.config
+    networks:
+      - self-healing-network
+
+  coder-db:
+    image: postgres:13
+    container_name: self-healing-coder-db
+    environment:
+      POSTGRES_USER: coder
+      POSTGRES_PASSWORD: coder
+      POSTGRES_DB: coder
+    volumes:
+      - coder-db-data:/var/lib/postgresql/data
+    networks:
+      - self-healing-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coder -d coder"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Ollama (Local LLM)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: self-healing-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - self-healing-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # Fallback if no GPU
+    # environment:
+    #   - OLLAMA_HOST=0.0.0.0
+
+  # Mattermost (Slack Alternative)
+  mattermost:
+    image: mattermost/mattermost-team-edition:release-8.1
+    container_name: self-healing-mattermost
+    ports:
+      - "8065:8065"
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgres://mmuser:mmuser_password@mattermost-db:5432/mattermost?sslmode=disable&connect_timeout=10
+      MM_BLEVESTTINGS_INDEXDIR: /mattermost/bleve-indexes
+    depends_on:
+      mattermost-db:
+        condition: service_healthy
+    volumes:
+      - mattermost-data:/mattermost/data
+      - mattermost-logs:/mattermost/logs
+      - mattermost-config:/mattermost/config
+    networks:
+      - self-healing-network
+
+  mattermost-db:
+    image: postgres:13-alpine
+    container_name: self-healing-mattermost-db
+    environment:
+      POSTGRES_USER: mmuser
+      POSTGRES_PASSWORD: mmuser_password
+      POSTGRES_DB: mattermost
+    volumes:
+      - mattermost-db-data:/var/lib/postgresql/data
+    networks:
+      - self-healing-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mmuser -d mattermost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mock PagerDuty (Simple echo server)
+  mock-pagerduty:
+    image: node:18-alpine
+    container_name: self-healing-mock-pd
+    ports:
+      - "3001:3000"
+    command: >
+      node -e '
+      const http = require("http");
+      const server = http.createServer((req, res) => {
+        console.log(req.method, req.url);
+        let body = "";
+        req.on("data", chunk => body += chunk);
+        req.on("end", () => {
+          console.log(body);
+          res.setHeader("Content-Type", "application/json");
+          if (req.url.includes("/incidents") && req.method === "POST") {
+             res.end(JSON.stringify({ incident: { id: "mock-123", status: "triggered" } }));
+          } else {
+             res.end(JSON.stringify({ status: "ok" }));
+          }
+        });
+      });
+      server.listen(3000, () => console.log("Mock PD listening on 3000"));
+      '
+    networks:
+      - self-healing-network
+
+networks:
+  self-healing-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  coder-data:
+  coder-db-data:
+  ollama-data:
+  mattermost-data:
+  mattermost-logs:
+  mattermost-config:
+  mattermost-db-data:

@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # Core OCP Application
+  # ============================================
+  ocp:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - LIGHTPANDA_WS_ENDPOINT=ws://lightpanda:9222
+      - CODER_API_URL=http://coder:7080
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - lightpanda
+    networks:
+      - ocp-network
+    restart: unless-stopped
+
+  # ============================================
+  # Redis - State Management
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - ocp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Lightpanda - Headless Browser (Verification)
+  # ============================================
+  lightpanda:
+    image: lightpanda/browser:latest
+    ports:
+      - "9222:9222"
+    networks:
+      - ocp-network
+    restart: unless-stopped
+    # Note: Lightpanda is in beta, expect some instability
+
+  # ============================================
+  # Coder - Sandboxed Execution Environment
+  # ============================================
+  coder:
+    image: ghcr.io/coder/coder:latest
+    ports:
+      - "7080:7080"
+    environment:
+      - CODER_ACCESS_URL=http://localhost:7080
+      - CODER_HTTP_ADDRESS=0.0.0.0:7080
+      - CODER_PG_CONNECTION_URL=postgresql://coder:coder@postgres:5432/coder?sslmode=disable
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - coder-data:/home/coder/.config/coderv2
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ocp-network
+    restart: unless-stopped
+
+  # ============================================
+  # PostgreSQL - Coder Database
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=coder
+      - POSTGRES_PASSWORD=coder
+      - POSTGRES_DB=coder
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - ocp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coder -d coder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # OneUptime - PagerDuty Alternative (Optional)
+  # Uncomment to use instead of PagerDuty
+  # ============================================
+  # oneuptime:
+  #   image: oneuptime/oneuptime:latest
+  #   ports:
+  #     - "3400:3400"
+  #   environment:
+  #     - IS_DOCKER=true
+  #   volumes:
+  #     - oneuptime-data:/data
+  #   networks:
+  #     - ocp-network
+  #   restart: unless-stopped
+
+  # ============================================
+  # Mattermost - Slack Alternative (Optional)
+  # Uncomment to use instead of Slack
+  # ============================================
+  # mattermost:
+  #   image: mattermost/mattermost-team-edition:latest
+  #   ports:
+  #     - "8065:8065"
+  #   environment:
+  #     - MM_SQLSETTINGS_DRIVERNAME=postgres
+  #     - MM_SQLSETTINGS_DATASOURCE=postgres://mattermost:mattermost@postgres-mm:5432/mattermost?sslmode=disable
+  #   volumes:
+  #     - mattermost-data:/mattermost/data
+  #     - mattermost-logs:/mattermost/logs
+  #   networks:
+  #     - ocp-network
+  #   restart: unless-stopped
+
+networks:
+  ocp-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:
+  coder-data:
+  # oneuptime-data:
+  # mattermost-data:
+  # mattermost-logs:

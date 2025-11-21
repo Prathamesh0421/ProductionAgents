@@ -10,7 +10,7 @@ import logger from '../utils/logger.js';
 class ParallelClient {
   constructor() {
     this.apiKey = config.parallel?.apiKey;
-    this.baseUrl = 'https://api.parallel.ai/v1'; // Hypothetical URL
+    this.baseUrl = 'https://api.parallel.ai/v1';
   }
 
   /**
@@ -18,17 +18,31 @@ class ParallelClient {
    * @param {string} query 
    */
   async researchIssue(query) {
+    if (!this.apiKey) {
+      logger.warn('Parallel API key not configured');
+      return null;
+    }
+
     try {
-      const response = await axios.post(`${this.baseUrl}/agent/research`, {
-        query: query,
-        depth: 'deep'
+      // Using Parallel Task API for Deep Research
+      // https://docs.parallel.ai/task-api/features/task-deep-research
+      const response = await axios.post(`${this.baseUrl}/tasks/runs`, {
+        input: query,
+        processor: 'ultra' // 'ultra' is often used for deep research/reasoning
       }, {
-        headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        headers: { 
+          'x-api-key': this.apiKey,
+          'Content-Type': 'application/json'
+        }
       });
 
       return response.data;
     } catch (error) {
-      logger.error('Parallel research failed', { error: error.message });
+      logger.error('Parallel research failed', { 
+        error: error.message,
+        status: error.response?.status,
+        data: error.response?.data 
+      });
       return null;
     }
   }
@@ -38,17 +52,29 @@ class ParallelClient {
    * @param {string} url 
    */
   async checkSite(url) {
+    if (!this.apiKey) {
+      logger.warn('Parallel API key not configured');
+      return null;
+    }
+
     try {
-      const response = await axios.post(`${this.baseUrl}/tools/browse`, {
-        url: url,
-        action: 'screenshot'
+      // Using Task API to browse/analyze specific URL
+      const response = await axios.post(`${this.baseUrl}/tasks/runs`, {
+        input: `Analyze the website at ${url}. Take a screenshot if possible and summarize the content.`,
+        processor: 'base' // Lighter weight for simple checks
       }, {
-        headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        headers: { 
+          'x-api-key': this.apiKey,
+          'Content-Type': 'application/json'
+        }
       });
 
       return response.data;
     } catch (error) {
-      logger.error('Parallel site check failed', { error: error.message });
+      logger.error('Parallel site check failed', { 
+        error: error.message,
+        status: error.response?.status
+      });
       return null;
     }
   }

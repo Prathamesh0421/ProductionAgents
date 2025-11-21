@@ -17,6 +17,7 @@ export const config = {
     apiKey: process.env.PAGERDUTY_API_KEY,
     webhookSecret: process.env.PAGERDUTY_WEBHOOK_SECRET,
     serviceId: process.env.PAGERDUTY_SERVICE_ID,
+    apiUrl: process.env.PAGERDUTY_API_URL, // For local mocking/alternatives
   },
 
   sanity: {
@@ -24,13 +25,9 @@ export const config = {
     dataset: process.env.SANITY_DATASET,
     token: process.env.SANITY_TOKEN,
   },
-
+  
   parallel: {
     apiKey: process.env.PARALLEL_API_KEY,
-  },
-
-  trm: {
-    apiKey: process.env.TRM_API_KEY,
   },
 
   skyflow: {
@@ -41,14 +38,6 @@ export const config = {
 
   postman: {
     apiKey: process.env.POSTMAN_API_KEY,
-  },
-
-  mcptotal: {
-    apiKey: process.env.MCPTOTAL_API_KEY,
-  },
-
-  lightning: {
-    apiKey: process.env.LIGHTNING_API_KEY,
   },
 
   // AI Provider Selection
@@ -80,6 +69,7 @@ export const config = {
   slack: {
     botToken: process.env.SLACK_BOT_TOKEN,
     approvalChannel: process.env.SLACK_APPROVAL_CHANNEL || 'incident-approvals',
+    apiUrl: process.env.SLACK_API_URL, // For Mattermost or other alternatives
   },
 
   confidence: {

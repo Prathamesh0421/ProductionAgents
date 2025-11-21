@@ -10,8 +10,9 @@ import logger from '../utils/logger.js';
 export class PagerDutyClient {
   constructor() {
     this.apiKey = config.pagerduty.apiKey;
+    this.baseUrl = config.pagerduty.apiUrl || 'https://api.pagerduty.com';
     this.client = axios.create({
-      baseURL: 'https://api.pagerduty.com',
+      baseURL: this.baseUrl,
       headers: {
         'Authorization': `Token token=${this.apiKey}`,
         'Content-Type': 'application/json',

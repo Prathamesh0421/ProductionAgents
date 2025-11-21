@@ -146,6 +146,11 @@ export class CoderClient {
 
   /**
    * Execute code in the workspace via agent API
+   * 
+   * WARNING: This implementation uses a hypothetical HTTP POST endpoint for execution.
+   * Coder v2 API typically requires a WebSocket connection (reconnecting-pty) or the `coder` CLI
+   * to execute commands in a workspace. This method may fail with 404/405.
+   * Recommended Fix: Use `coder` CLI in subprocess or implement WebSocket client.
    *
    * @param {string} workspaceName - Workspace name
    * @param {string} code - Code to execute

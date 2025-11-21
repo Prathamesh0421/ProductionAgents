@@ -11,7 +11,17 @@ export class SlackClient {
   constructor() {
     this.token = config.slack.botToken;
     this.approvalChannel = config.slack.approvalChannel;
-    this.client = this.token ? new WebClient(this.token) : null;
+    this.apiUrl = config.slack.apiUrl; // Support for Mattermost/Custom URL
+    
+    if (this.token) {
+        const options = {};
+        if (this.apiUrl) {
+            options.slackApiUrl = this.apiUrl;
+        }
+        this.client = new WebClient(this.token, options);
+    } else {
+        this.client = null;
+    }
   }
 
   /**

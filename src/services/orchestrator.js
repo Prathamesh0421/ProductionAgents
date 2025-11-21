@@ -90,7 +90,7 @@ export class Orchestrator {
       await stateManager.transitionStage(incidentId, RedisStateManager.STAGES.SYNTHESIZING);
 
       // Call Anthropic to generate remediation
-      const remediation = await anthropicClient.generateRemediation(
+      const remediation = await aiClient.generateRemediation(
         hypothesis,
         runbookContext,
         incidentState

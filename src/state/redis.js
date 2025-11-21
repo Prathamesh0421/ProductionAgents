@@ -7,10 +7,12 @@ import logger from '../utils/logger.js';
  * Stores: incident_id, current_stage, cleric_hypothesis, senso_context
  */
 
-class RedisStateManager {
+export class RedisStateManager {
   constructor() {
     this.client = null;
     this.isConnected = false;
+    this.useMemory = false;
+    this.memoryStore = new Map();
   }
 
   async connect() {
@@ -20,40 +22,49 @@ class RedisStateManager {
         port: config.redis.port,
         password: config.redis.password || undefined,
         retryStrategy: (times) => {
+          if (times > 3) return null; // Stop retrying
           const delay = Math.min(times * 50, 2000);
           return delay;
         },
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: 1,
       });
 
       this.client.on('connect', () => {
         this.isConnected = true;
+        this.useMemory = false;
         logger.info('Redis connected successfully');
       });
 
       this.client.on('error', (err) => {
-        logger.error('Redis connection error', { error: err.message });
+        // logger.error('Redis connection error', { error: err.message });
+        // Silence detailed errors during connection attempts to avoid noise if we fallback
       });
 
-      this.client.on('close', () => {
-        this.isConnected = false;
-        logger.warn('Redis connection closed');
+      // Wait for connection or failure
+      await new Promise((resolve, reject) => {
+          this.client.once('connect', resolve);
+          this.client.once('error', (err) => {
+              // If initial connection fails, we fallback
+              reject(err);
+          });
+          // Timeout fallback
+          setTimeout(() => reject(new Error('Timeout')), 2000);
       });
 
-      // Test connection
-      await this.client.ping();
       return true;
     } catch (error) {
-      logger.error('Failed to connect to Redis', { error: error.message });
-      throw error;
+      logger.warn('Failed to connect to Redis, using in-memory fallback', { error: error.message });
+      this.useMemory = true;
+      this.isConnected = true; // We are "connected" to the memory store
+      return true;
     }
   }
 
   async disconnect() {
-    if (this.client) {
+    if (this.client && !this.useMemory) {
       await this.client.quit();
-      this.isConnected = false;
     }
+    this.isConnected = false;
   }
 
   /**
@@ -108,8 +119,13 @@ class RedisStateManager {
       urgency: state.urgency || null,
     };
 
-    await this.client.set(key, JSON.stringify(data), 'EX', 86400 * 7); // 7 day TTL
-    logger.debug('Incident state saved', { incidentId, stage: data.current_stage });
+    if (this.useMemory) {
+      this.memoryStore.set(key, JSON.stringify(data));
+      logger.debug('Incident state saved (memory)', { incidentId, stage: data.current_stage });
+    } else {
+      await this.client.set(key, JSON.stringify(data), 'EX', 86400 * 7); // 7 day TTL
+      logger.debug('Incident state saved', { incidentId, stage: data.current_stage });
+    }
     return data;
   }
 
@@ -118,7 +134,12 @@ class RedisStateManager {
    */
   async getIncidentState(incidentId) {
     const key = this._getIncidentKey(incidentId);
-    const data = await this.client.get(key);
+    let data;
+    if (this.useMemory) {
+      data = this.memoryStore.get(key);
+    } else {
+      data = await this.client.get(key);
+    }
     return data ? JSON.parse(data) : null;
   }
 
@@ -161,15 +182,26 @@ class RedisStateManager {
    * Get all active incidents
    */
   async getActiveIncidents() {
-    const keys = await this.client.keys('incident:*');
     const incidents = [];
 
-    for (const key of keys) {
-      const data = await this.client.get(key);
-      if (data) {
-        const incident = JSON.parse(data);
-        if (incident.current_stage !== RedisStateManager.STAGES.RESOLVED) {
-          incidents.push(incident);
+    if (this.useMemory) {
+      for (const [key, data] of this.memoryStore.entries()) {
+        if (key.startsWith('incident:')) {
+          const incident = JSON.parse(data);
+          if (incident.current_stage !== RedisStateManager.STAGES.RESOLVED) {
+            incidents.push(incident);
+          }
+        }
+      }
+    } else {
+      const keys = await this.client.keys('incident:*');
+      for (const key of keys) {
+        const data = await this.client.get(key);
+        if (data) {
+          const incident = JSON.parse(data);
+          if (incident.current_stage !== RedisStateManager.STAGES.RESOLVED) {
+            incidents.push(incident);
+          }
         }
       }
     }
@@ -182,7 +214,11 @@ class RedisStateManager {
    */
   async deleteIncidentState(incidentId) {
     const key = this._getIncidentKey(incidentId);
-    await this.client.del(key);
+    if (this.useMemory) {
+      this.memoryStore.delete(key);
+    } else {
+      await this.client.del(key);
+    }
     logger.debug('Incident state deleted', { incidentId });
   }
 
@@ -191,10 +227,16 @@ class RedisStateManager {
    */
   async setPendingApproval(incidentId, approvalData) {
     const key = `approval:${incidentId}`;
-    await this.client.set(key, JSON.stringify({
+    const data = JSON.stringify({
       ...approvalData,
       requested_at: new Date().toISOString(),
-    }), 'EX', 3600); // 1 hour TTL
+    });
+
+    if (this.useMemory) {
+      this.memoryStore.set(key, data);
+    } else {
+      await this.client.set(key, data, 'EX', 3600); // 1 hour TTL
+    }
     return true;
   }
 
@@ -203,7 +245,12 @@ class RedisStateManager {
    */
   async getPendingApproval(incidentId) {
     const key = `approval:${incidentId}`;
-    const data = await this.client.get(key);
+    let data;
+    if (this.useMemory) {
+      data = this.memoryStore.get(key);
+    } else {
+      data = await this.client.get(key);
+    }
     return data ? JSON.parse(data) : null;
   }
 
@@ -212,7 +259,11 @@ class RedisStateManager {
    */
   async clearPendingApproval(incidentId) {
     const key = `approval:${incidentId}`;
-    await this.client.del(key);
+    if (this.useMemory) {
+      this.memoryStore.delete(key);
+    } else {
+      await this.client.del(key);
+    }
   }
 }
 
