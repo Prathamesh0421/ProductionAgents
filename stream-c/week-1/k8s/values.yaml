@@ -1,0 +1,42 @@
+coder:
+  # The service account to use.
+  serviceAccount:
+    name: coder
+    create: true
+    annotations: {}
+
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+  # Environment variables for Coder
+  env:
+    - name: CODER_ACCESS_URL
+      value: "http://coder.coder.svc.cluster.local"  # Internal Kubernetes service DNS
+    - name: CODER_PG_CONNECTION_URL
+      value: "postgres://coder:coder@postgresql.coder.svc.cluster.local:5432/coder?sslmode=disable"
+    # Initial Admin User
+    - name: CODER_INITIAL_ADMIN_EMAIL
+      value: "admin@example.com"
+    - name: CODER_INITIAL_ADMIN_USERNAME
+      value: "admin"
+    - name: CODER_INITIAL_ADMIN_PASSWORD
+      value: "SecurePassword123!"
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+
+  # Ingress configuration (disabled here, we will use a separate manifest for clarity, 
+  # but typically you can enable it here)
+  ingress:
+    enabled: false
+
+# Built-in PostgreSQL configuration (disabled, using external bitnami chart)
+coder-db-postgresql:
+  enabled: false

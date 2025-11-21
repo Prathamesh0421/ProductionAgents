@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: coder
+  labels:
+    name: coder
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: coder-db-url
+  namespace: coder
+type: Opaque
+stringData:
+  # Replace with your actual PostgreSQL URL if using external DB
+  # Format: postgres://<user>:<password>@<host>:<port>/<dbname>?sslmode=disable
+  url: "postgres://coder:coder@coder-db-postgresql.coder.svc.cluster.local:5432/coder?sslmode=disable"
+---
+# RBAC for Coder to manage workspaces
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: coder-workspace-provisioner
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "secrets", "services", "persistentvolumeclaims", "configmaps"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: coder-workspace-provisioner-binding
+subjects:
+  - kind: ServiceAccount
+    name: coder
+    namespace: coder
+roleRef:
+  kind: ClusterRole
+  name: coder-workspace-provisioner
+  apiGroup: rbac.authorization.k8s.io

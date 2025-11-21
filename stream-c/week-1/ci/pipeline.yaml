@@ -1,0 +1,38 @@
+name: Deploy Coder
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'stream-c/week-1/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.11.1
+
+      - name: Set up Kubectl
+        uses: azure/setup-kubectl@v3
+
+      # Assuming we have a KUBECONFIG secret
+      - name: Configure Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Install Coder
+        run: |
+          cd stream-c/week-1/scripts
+          chmod +x install_coder.sh
+          ./install_coder.sh
+
+      - name: Verify Deployment
+        run: |
+          kubectl get pods -n coder
