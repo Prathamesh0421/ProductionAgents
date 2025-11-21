@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { glob } from 'glob';
 import logger from '../../utils/logger.js';
-import { sensoClient } from '../../services/senso.js';
+import { sanityClient } from '../../services/sanity.js';
 import {
   validateMetadata,
   buildRunbookMetadata,
@@ -23,7 +23,7 @@ import {
  */
 export class RunbookIngester {
   constructor(options = {}) {
-    this.sensoClient = options.sensoClient || sensoClient;
+    this.client = options.client || sanityClient;
     this.dryRun = options.dryRun || false;
     this.verbose = options.verbose || false;
   }
@@ -84,8 +84,8 @@ export class RunbookIngester {
       return { success: true, dryRun: true, metadata };
     }
 
-    // Ingest to Senso
-    const result = await this.sensoClient.ingestContent(optimizedContent, metadata);
+    // Ingest to Sanity
+    const result = await this.client.ingestContent(optimizedContent, metadata);
 
     logger.info('Runbook ingested', {
       title: metadata.title,
@@ -146,7 +146,7 @@ export class RunbookIngester {
       return { success: true, dryRun: true, metadata };
     }
 
-    const result = await this.sensoClient.ingestContent(optimizedContent, metadata);
+    const result = await this.client.ingestContent(optimizedContent, metadata);
 
     return { success: true, id: result?.id, metadata };
   }

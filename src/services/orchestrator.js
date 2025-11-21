@@ -19,7 +19,7 @@ import pagerdutyClient from './pagerduty.js';
 export class Orchestrator {
   constructor() {
     this.confidenceThreshold = config.confidence.autoExecuteThreshold;
-    this.contextMatchThreshold = config.confidence.sensoMatchThreshold || 0.7;
+    this.contextMatchThreshold = config.confidence.contextMatchThreshold || 70;
   }
 
   /**
@@ -108,6 +108,7 @@ export class Orchestrator {
       // Update state with remediation details
       await stateManager.updateIncidentState(incidentId, {
         remediation_code: remediation.code,
+        remediation_language: remediation.language || 'python',
         anthropic_reasoning: remediation.reasoning,
         remediation_risk: remediation.risk,
         remediation_confidence: remediation.confidence,
@@ -284,7 +285,7 @@ export class Orchestrator {
       const execResult = await coderClient.executeInWorkspace(
         workspace.name,
         incidentState.remediation_code,
-        'python' // Default to Python
+        incidentState.remediation_language || 'python'
       );
 
       // Update state with execution results

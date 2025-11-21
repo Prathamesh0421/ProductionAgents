@@ -156,6 +156,7 @@ Please analyze this incident and generate a remediation script following the Cha
     const result = {
       raw: content,
       code: null,
+      language: 'python', // Default
       reasoning: '',
       risk: 'UNKNOWN',
       confidence: 50,
@@ -163,10 +164,11 @@ Please analyze this incident and generate a remediation script following the Cha
       requiresApproval: false,
     };
 
-    // Extract code block
-    const codeMatch = content.match(/<execution_block>([\s\S]*?)<\/execution_block>/);
+    // Extract code block and language attribute
+    const codeMatch = content.match(/<execution_block(?:\s+language=["']?(\w+)["']?)?>([\s\S]*?)<\/execution_block>/);
     if (codeMatch) {
-      result.code = codeMatch[1].trim();
+      result.language = codeMatch[1] || 'python';
+      result.code = codeMatch[2].trim();
     }
 
     // Extract risk level

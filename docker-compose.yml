@@ -57,6 +57,7 @@ services:
 
   # ============================================
   # Coder - Sandboxed Execution Environment
+  # Docs: https://coder.com/docs/install/docker
   # ============================================
   coder:
     image: ghcr.io/coder/coder:latest
@@ -66,15 +67,31 @@ services:
       - CODER_ACCESS_URL=http://localhost:7080
       - CODER_HTTP_ADDRESS=0.0.0.0:7080
       - CODER_PG_CONNECTION_URL=postgresql://coder:coder@postgres:5432/coder?sslmode=disable
+      # First run creates admin user - set these for automatic setup
+      - CODER_FIRST_USER_EMAIL=${CODER_ADMIN_EMAIL:-admin@localhost}
+      - CODER_FIRST_USER_USERNAME=${CODER_ADMIN_USERNAME:-admin}
+      - CODER_FIRST_USER_PASSWORD=${CODER_ADMIN_PASSWORD:-changeme123}
+      # Telemetry (disable for privacy)
+      - CODER_TELEMETRY_ENABLE=false
+      # Session/Token config
+      - CODER_SESSION_DURATION=168h
+      - CODER_MAX_TOKEN_LIFETIME=8760h
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - coder-data:/home/coder/.config/coderv2
+    group_add:
+      - "${DOCKER_GROUP_ID:-999}"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - ocp-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7080/api/v2/buildinfo"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # ============================================
   # PostgreSQL - Coder Database

@@ -49,6 +49,42 @@ class SanityClient {
   }
 
   /**
+   * Ingest new content into Sanity
+   * @param {string} text - Content body
+   * @param {object} metadata - Metadata tags
+   */
+  async ingestContent(text, metadata = {}) {
+    try {
+      const doc = {
+        _type: 'runbook',
+        title: metadata.title || 'Untitled',
+        body: text,
+        service: metadata.service,
+        metadata: metadata,
+        ingestedAt: new Date().toISOString()
+      };
+
+      const url = `https://${this.projectId}.api.sanity.io/v${this.apiVersion}/data/mutate/${this.dataset}`;
+      
+      const mutations = [{
+        create: doc
+      }];
+
+      const response = await axios.post(url, { mutations }, {
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      return { id: response.data.results?.[0]?.id };
+    } catch (error) {
+      logger.error('Sanity ingestion failed', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
    * Format results for LLM prompt
    */
   formatForPrompt(results) {

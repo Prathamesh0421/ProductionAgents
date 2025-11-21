@@ -6,7 +6,7 @@
  */
 
 import logger from '../../utils/logger.js';
-import { sensoClient } from '../../services/senso.js';
+import { sanityClient } from '../../services/sanity.js';
 import { redisClient } from '../../state/redis.js';
 import { buildIncidentMetadata, DocumentTypes } from './schema.js';
 
@@ -15,7 +15,7 @@ import { buildIncidentMetadata, DocumentTypes } from './schema.js';
  */
 export class IncidentLearner {
   constructor(options = {}) {
-    this.sensoClient = options.sensoClient || sensoClient;
+    this.client = options.client || sanityClient;
     this.redis = options.redis || redisClient;
     this.stabilityPeriodMs = options.stabilityPeriodMs || 24 * 60 * 60 * 1000; // 24 hours default
   }
@@ -178,12 +178,12 @@ export class IncidentLearner {
       resolutionTimeSeconds: this._calculateResolutionTime(incidentData),
     });
 
-    // Ingest to Senso
-    const result = await this.sensoClient.ingestContent(content, metadata);
+    // Ingest to Sanity
+    const result = await this.client.ingestContent(content, metadata);
 
     logger.info('Incident ingested for learning', {
       incident_id: incidentData.incident_id,
-      senso_id: result?.id,
+      sanity_id: result?.id,
     });
 
     return result;
@@ -219,9 +219,9 @@ export class IncidentLearner {
       parts.push('');
     }
 
-    if (incidentData.senso_context) {
+    if (incidentData.sanity_context) {
       parts.push('## Runbooks Referenced');
-      const runbooks = incidentData.senso_context.results || [];
+      const runbooks = incidentData.sanity_context || [];
       for (const rb of runbooks) {
         parts.push(`- ${rb.title} (score: ${(rb.score * 100).toFixed(1)}%)`);
       }

@@ -48,7 +48,7 @@ If risk is acceptable, generate the remediation script. The code must:
 - Log all actions taken
 - Have a dry-run mode where possible
 
-Wrap the executable code in <execution_block> tags.
+Wrap the executable code in <execution_block language="bash|python"> tags.
 
 ## Step 5: Verification Steps
 Describe how to verify the fix worked.
@@ -167,6 +167,7 @@ Please analyze this incident and generate a remediation script following the Cha
     const result = {
       raw: content,
       code: null,
+      language: 'python', // Default
       reasoning: '',
       risk: 'UNKNOWN',
       confidence: 50,
@@ -174,10 +175,11 @@ Please analyze this incident and generate a remediation script following the Cha
       requiresApproval: false,
     };
 
-    // Extract code block
-    const codeMatch = content.match(/<execution_block>([\s\S]*?)<\/execution_block>/);
+    // Extract code block and language attribute
+    const codeMatch = content.match(/<execution_block(?:\s+language=["']?(\w+)["']?)?>([\s\S]*?)<\/execution_block>/);
     if (codeMatch) {
-      result.code = codeMatch[1].trim();
+      result.language = codeMatch[1] || 'python';
+      result.code = codeMatch[2].trim();
       // Clean up markdown code fence if present inside the block
       result.code = result.code.replace(/^```\w*\n/, '').replace(/\n```$/, '');
     }
