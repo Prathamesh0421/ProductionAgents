@@ -1,0 +1,21 @@
+# Custom Lightpanda Configuration
+# Extends official image with production settings
+
+FROM lightpanda/browser:nightly
+
+# Disable telemetry by default
+ENV LIGHTPANDA_DISABLE_TELEMETRY=true
+
+# Set default host and port
+ENV LIGHTPANDA_HOST=0.0.0.0
+ENV LIGHTPANDA_PORT=9222
+
+# Expose CDP port
+EXPOSE 9222
+
+# Health check via CDP endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget -q --spider http://localhost:9222/json/version || exit 1
+
+# Start Lightpanda with production settings
+CMD ["./lightpanda", "--host", "0.0.0.0", "--port", "9222"]

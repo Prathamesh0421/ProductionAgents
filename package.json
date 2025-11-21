@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "jest"
+    "test": "jest",
+    "ingest": "node src/cognition/ingestion/runbook-ingester.js",
+    "ingest:runbooks": "node src/cognition/ingestion/runbook-ingester.js ./runbooks",
+    "learning:process": "node -e \"import('./src/cognition/ingestion/incident-learner.js').then(m => m.createLearningScheduler().learner.processPendingLearning())\""
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -18,7 +21,8 @@
     "winston": "^3.11.0",
     "uuid": "^9.0.1",
     "@slack/web-api": "^6.11.0",
-    "puppeteer-core": "^21.6.0"
+    "puppeteer-core": "^21.6.0",
+    "glob": "^10.3.10"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
