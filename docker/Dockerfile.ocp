@@ -11,6 +11,7 @@ RUN npm ci --only=production
 
 # Copy source
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
 # Production image
 FROM node:20-alpine

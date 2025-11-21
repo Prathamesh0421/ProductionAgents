@@ -5,7 +5,9 @@ services:
   # Core OCP Application
   # ============================================
   ocp:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ocp
     ports:
       - "3000:3000"
     environment:
