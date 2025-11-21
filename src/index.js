@@ -11,8 +11,8 @@ import orchestrator from './services/orchestrator.js';
  *
  * The central nervous system that coordinates:
  * - PagerDuty webhooks for incident triggers
- * - Cleric investigation parsing
- * - Senso context retrieval
+ * - Hypothesis parsing
+ * - Sanity context retrieval
  * - Anthropic remediation synthesis
  * - Coder sandbox execution
  * - Lightpanda verification
@@ -90,8 +90,8 @@ app.post('/debug/trigger', async (req, res) => {
     await stateManager.setIncidentState(incidentId, {
       current_stage: 'HYPOTHESIS_RECEIVED',
       title: 'Debug incident',
-      cleric_hypothesis: hypothesis,
-      cleric_confidence: confidence || 85,
+      hypothesis: hypothesis,
+      hypothesis_confidence: confidence || 85,
     });
 
     // Trigger processing

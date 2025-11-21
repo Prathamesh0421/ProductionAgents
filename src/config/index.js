@@ -19,20 +19,41 @@ export const config = {
     serviceId: process.env.PAGERDUTY_SERVICE_ID,
   },
 
-  cleric: {
-    agentName: process.env.CLERIC_AGENT_NAME || 'Cleric AI',
-    agentEmail: process.env.CLERIC_AGENT_EMAIL || '',
+  sanity: {
+    projectId: process.env.SANITY_PROJECT_ID,
+    dataset: process.env.SANITY_DATASET,
+    token: process.env.SANITY_TOKEN,
+  },
+
+  parallel: {
+    apiKey: process.env.PARALLEL_API_KEY,
+  },
+
+  trm: {
+    apiKey: process.env.TRM_API_KEY,
+  },
+
+  skyflow: {
+    vaultId: process.env.SKYFLOW_VAULT_ID,
+    vaultUrl: process.env.SKYFLOW_VAULT_URL,
+    bearerToken: process.env.SKYFLOW_BEARER_TOKEN,
+  },
+
+  postman: {
+    apiKey: process.env.POSTMAN_API_KEY,
+  },
+
+  mcptotal: {
+    apiKey: process.env.MCPTOTAL_API_KEY,
+  },
+
+  lightning: {
+    apiKey: process.env.LIGHTNING_API_KEY,
   },
 
   // AI Provider Selection
   llm: {
     provider: process.env.LLM_PROVIDER || 'anthropic',
-  },
-
-  // Stream B dependencies - interfaces only in Stream A
-  senso: {
-    apiUrl: process.env.SENSO_API_URL,
-    apiKey: process.env.SENSO_API_KEY,
   },
 
   anthropic: {
@@ -63,7 +84,7 @@ export const config = {
 
   confidence: {
     autoExecuteThreshold: parseInt(process.env.CONFIDENCE_AUTO_EXECUTE_THRESHOLD || '90', 10),
-    sensoMatchThreshold: parseInt(process.env.SENSO_MATCH_THRESHOLD || '85', 10),
+    contextMatchThreshold: parseInt(process.env.CONTEXT_MATCH_THRESHOLD || '85', 10),
   },
 };
 

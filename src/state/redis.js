@@ -59,10 +59,10 @@ class RedisStateManager {
   /**
    * Incident State Stages:
    * - TRIGGERED: Initial alert received
-   * - INVESTIGATING: Cleric is analyzing
-   * - HYPOTHESIS_RECEIVED: Cleric posted findings
-   * - CONTEXT_RETRIEVED: Senso lookup complete
-   * - SYNTHESIZING: Anthropic generating remediation
+   * - INVESTIGATING: Analysis in progress
+   * - HYPOTHESIS_RECEIVED: Hypothesis generated
+   * - CONTEXT_RETRIEVED: Context lookup complete
+   * - SYNTHESIZING: Remediation generation
    * - EXECUTING: Coder running fix
    * - VERIFYING: Lightpanda checking
    * - RESOLVED: Incident fixed
@@ -92,10 +92,10 @@ class RedisStateManager {
     const data = {
       incident_id: incidentId,
       current_stage: state.current_stage || RedisStateManager.STAGES.TRIGGERED,
-      cleric_hypothesis: state.cleric_hypothesis || null,
-      cleric_confidence: state.cleric_confidence || null,
-      senso_context: state.senso_context || null,
-      senso_match_score: state.senso_match_score || null,
+      hypothesis: state.hypothesis || null,
+      hypothesis_confidence: state.hypothesis_confidence || null,
+      context: state.context || state.sanity_context || null,
+      context_match_score: state.context_match_score || null,
       remediation_code: state.remediation_code || null,
       anthropic_reasoning: state.anthropic_reasoning || null,
       coder_workspace_id: state.coder_workspace_id || null,

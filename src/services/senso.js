@@ -35,8 +35,8 @@ export class SensoClient {
    */
   async search(query, limit = 5) {
     if (!this.baseUrl || !this.apiKey) {
-      logger.warn('Senso not configured');
-      throw new ConfigurationError('Senso API URL or API Key not configured');
+      logger.warn('Senso not configured - returning empty results');
+      return { results: [], maxScore: 0 };
     }
 
     try {
@@ -73,7 +73,7 @@ export class SensoClient {
         error: error.message,
         status: error.response?.status,
       });
-      throw error;
+      throw new ExternalServiceError('Senso', 'Search failed', error);
     }
   }
 

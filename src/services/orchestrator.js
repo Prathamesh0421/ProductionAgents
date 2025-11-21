@@ -1,7 +1,9 @@
 import config from '../config/index.js';
 import logger from '../utils/logger.js';
 import stateManager, { RedisStateManager } from '../state/redis.js';
-import sensoClient from './senso.js';
+import sanityClient from './sanity.js';
+import parallelClient from './parallel.js';
+import skyflowClient from './skyflow.js';
 import aiClient from './llm.js';
 import coderClient from './coder.js';
 import lightpandaClient from './lightpanda.js';
@@ -17,43 +19,52 @@ import pagerdutyClient from './pagerduty.js';
 export class Orchestrator {
   constructor() {
     this.confidenceThreshold = config.confidence.autoExecuteThreshold;
-    this.sensoMatchThreshold = config.confidence.sensoMatchThreshold;
+    this.contextMatchThreshold = config.confidence.sensoMatchThreshold || 0.7;
   }
 
   /**
-   * Process hypothesis from Cleric
-   * This is the "Orient" phase - retrieve context from Senso
+   * Process hypothesis
+   * This is the "Orient" phase - retrieve context from Sanity
    *
    * @param {string} incidentId
    * @param {object} parsedHypothesis
-   * @param {string} sensoQuery
+   * @param {string} query
    */
-  async processHypothesis(incidentId, parsedHypothesis, sensoQuery) {
+  async processHypothesis(incidentId, parsedHypothesis, query) {
     try {
-      logger.info('Processing hypothesis', { incidentId, sensoQuery: sensoQuery.substring(0, 100) });
+      // Redact sensitive info from query using Skyflow
+      const redactedQuery = await skyflowClient.redact(query);
+      logger.info('Processing hypothesis', { incidentId, query: redactedQuery.substring(0, 100) });
 
-      // Query Senso for relevant runbooks
-      const sensoResults = await sensoClient.search(sensoQuery, 5);
+      // Query Sanity for relevant runbooks
+      const sanityResults = await sanityClient.search(redactedQuery);
+      
+      // Use Parallel to research the issue on the web
+      const parallelResearch = await parallelClient.researchIssue(redactedQuery);
 
-      // Update state with Senso context
+      // Update state with Context
       await stateManager.transitionStage(
         incidentId,
         RedisStateManager.STAGES.CONTEXT_RETRIEVED,
         {
-          senso_context: sensoResults.results,
-          senso_match_score: sensoResults.maxScore * 100, // Convert to percentage
-          senso_query: sensoQuery,
+          sanity_context: sanityResults.results,
+          context_match_score: sanityResults.maxScore * 100,
+          parallel_research: parallelResearch,
+          query: redactedQuery,
         }
       );
 
       // Format context for Anthropic
-      const runbookContext = sensoClient.formatForPrompt(sensoResults.results);
+      let contextText = sanityClient.formatForPrompt(sanityResults.results);
+      if (parallelResearch) {
+        contextText += `\n\nParallel Research:\n${JSON.stringify(parallelResearch)}`;
+      }
 
       // Get incident state for additional context
       const incidentState = await stateManager.getIncidentState(incidentId);
 
       // Proceed to synthesis phase
-      await this.synthesizeRemediation(incidentId, parsedHypothesis, runbookContext, incidentState);
+      await this.synthesizeRemediation(incidentId, parsedHypothesis, contextText, incidentState);
     } catch (error) {
       logger.error('Failed to process hypothesis', {
         error: error.message,
@@ -105,7 +116,7 @@ export class Orchestrator {
       // Apply Confidence Protocol
       const shouldAutoExecute = this.evaluateConfidence(
         hypothesis.confidence,
-        incidentState.senso_match_score,
+        incidentState.context_match_score,
         remediation.confidence,
         remediation.risk
       );
@@ -139,27 +150,27 @@ export class Orchestrator {
    * Evaluate confidence using the Confidence Protocol
    * Returns true if safe to auto-execute
    */
-  evaluateConfidence(clericConfidence, sensoMatchScore, remediationConfidence, risk) {
+  evaluateConfidence(hypothesisConfidence, contextMatchScore, remediationConfidence, risk) {
     // If risk is HIGH, never auto-execute
     if (risk === 'HIGH') {
       logger.debug('Confidence Protocol: HIGH risk - requires approval');
       return false;
     }
 
-    // Check Cleric confidence
-    if ((clericConfidence || 0) < this.confidenceThreshold) {
-      logger.debug('Confidence Protocol: Cleric confidence below threshold', {
-        clericConfidence,
+    // Check Hypothesis confidence
+    if ((hypothesisConfidence || 0) < this.confidenceThreshold) {
+      logger.debug('Confidence Protocol: Hypothesis confidence below threshold', {
+        hypothesisConfidence,
         threshold: this.confidenceThreshold,
       });
       return false;
     }
 
-    // Check Senso match score
-    if ((sensoMatchScore || 0) < this.sensoMatchThreshold) {
-      logger.debug('Confidence Protocol: Senso match score below threshold', {
-        sensoMatchScore,
-        threshold: this.sensoMatchThreshold,
+    // Check Context match score
+    if ((contextMatchScore || 0) < this.contextMatchThreshold) {
+      logger.debug('Confidence Protocol: Context match score below threshold', {
+        contextMatchScore,
+        threshold: this.contextMatchThreshold,
       });
       return false;
     }
@@ -375,7 +386,7 @@ export class Orchestrator {
         await pagerdutyClient.addNote(
           incidentId,
           `Self-Healing Engine successfully remediated this incident.\n\n` +
-          `Root Cause: ${incidentState.cleric_root_cause || incidentState.cleric_hypothesis}\n` +
+          `Root Cause: ${incidentState.root_cause || incidentState.hypothesis}\n` +
           `Action Taken: Automated remediation executed\n` +
           `Verification: Passed`
         );
@@ -430,8 +441,8 @@ export class Orchestrator {
         incident_id: incidentId,
         title: incidentState.title,
         service: incidentState.service_name,
-        root_cause: incidentState.cleric_root_cause,
-        hypothesis: incidentState.cleric_hypothesis,
+        root_cause: incidentState.root_cause,
+        hypothesis: incidentState.hypothesis,
         remediation_code: incidentState.remediation_code,
         resolution: incidentState.resolution,
         resolved_at: incidentState.resolved_at,
