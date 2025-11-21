@@ -3,10 +3,16 @@
  *
  * Wraps Stream A's orchestrator with Stream B's enhanced cognition services
  * Provides drop-in replacement with advanced prompt engineering and verification
+ *
+ * Updated for refactored architecture:
+ * - Sanity instead of Senso
+ * - AI abstraction layer (Anthropic/Gemini)
+ * - Parallel research integration
+ * - Skyflow PII redaction
  */
 
 import { Orchestrator } from '../../services/orchestrator.js';
-import { EnhancedSensoClient } from '../services/enhanced-senso.js';
+import { EnhancedSanityClient } from '../services/enhanced-sanity.js';
 import { EnhancedAnthropicClient } from '../services/enhanced-anthropic.js';
 import { EnhancedLightpandaClient } from '../services/enhanced-lightpanda.js';
 import { IncidentLearner, createLearningScheduler } from '../ingestion/incident-learner.js';
@@ -23,12 +29,12 @@ export class EnhancedOrchestrator extends Orchestrator {
     super();
 
     // Replace base services with enhanced versions
-    this.sensoClient = new EnhancedSensoClient({
+    this.sanityClient = new EnhancedSanityClient({
       dryRun: options.dryRun || false,
       stabilityPeriodMs: options.stabilityPeriodMs || 24 * 60 * 60 * 1000,
     });
 
-    this.anthropicClient = new EnhancedAnthropicClient({
+    this.aiClient = new EnhancedAnthropicClient({
       includeExamples: options.includeExamples ?? true,
       confidenceThreshold: options.confidenceThreshold || 60,
     });
@@ -39,12 +45,15 @@ export class EnhancedOrchestrator extends Orchestrator {
 
     // Incident learner for post-resolution learning
     this.incidentLearner = new IncidentLearner({
-      sensoClient: this.sensoClient,
+      contextClient: this.sanityClient,
       stabilityPeriodMs: options.stabilityPeriodMs,
     });
 
     // Learning scheduler
     this.learningScheduler = null;
+
+    // Use config thresholds
+    this.contextMatchThreshold = config.confidence.contextMatchThreshold;
   }
 
   /**
@@ -52,7 +61,7 @@ export class EnhancedOrchestrator extends Orchestrator {
    */
   startLearningScheduler(intervalMs = 60 * 60 * 1000) {
     this.learningScheduler = createLearningScheduler({
-      sensoClient: this.sensoClient,
+      contextClient: this.sanityClient,
       intervalMs,
     });
     this.learningScheduler.start();
@@ -73,11 +82,11 @@ export class EnhancedOrchestrator extends Orchestrator {
   /**
    * Enhanced hypothesis processing with metadata filtering
    */
-  async processHypothesis(incidentId, parsedHypothesis, sensoQuery) {
+  async processHypothesis(incidentId, parsedHypothesis, query) {
     try {
       logger.info('Processing hypothesis (enhanced)', {
         incidentId,
-        sensoQuery: sensoQuery.substring(0, 100),
+        query: query.substring(0, 100),
       });
 
       // Check for recurrence (knowledge poisoning prevention)
@@ -94,21 +103,21 @@ export class EnhancedOrchestrator extends Orchestrator {
         }
       }
 
-      // Enhanced search with metadata filtering
-      const sensoResults = await this.sensoClient.searchWithFilters(sensoQuery, {
+      // Enhanced search with metadata filtering via Sanity
+      const contextResults = await this.sanityClient.searchWithFilters(query, {
         service: service,
         failureTypes: parsedHypothesis.failureTypes,
         limit: 5,
       });
 
-      // Update state with Senso context
+      // Update state with context
       await stateManager.transitionStage(
         incidentId,
         RedisStateManager.STAGES.CONTEXT_RETRIEVED,
         {
-          senso_context: sensoResults,
-          senso_match_score: sensoResults.maxScore * 100,
-          senso_query: sensoQuery,
+          sanity_context: contextResults,
+          context_match_score: contextResults.maxScore * 100,
+          query: query,
         }
       );
 
@@ -119,7 +128,7 @@ export class EnhancedOrchestrator extends Orchestrator {
       await this.synthesizeRemediationEnhanced(
         incidentId,
         parsedHypothesis,
-        sensoResults,
+        contextResults,
         incidentState
       );
     } catch (error) {
@@ -138,16 +147,16 @@ export class EnhancedOrchestrator extends Orchestrator {
   /**
    * Enhanced synthesis with edge case handling
    */
-  async synthesizeRemediationEnhanced(incidentId, hypothesis, sensoResults, incidentState) {
+  async synthesizeRemediationEnhanced(incidentId, hypothesis, contextResults, incidentState) {
     try {
       logger.info('Synthesizing remediation (enhanced)', { incidentId });
 
       await stateManager.transitionStage(incidentId, RedisStateManager.STAGES.SYNTHESIZING);
 
-      // Use enhanced Anthropic client with edge case handling
-      const remediation = await this.anthropicClient.generateRemediationEnhanced(
+      // Use enhanced AI client with edge case handling
+      const remediation = await this.aiClient.generateRemediationEnhanced(
         hypothesis,
-        sensoResults,
+        contextResults,
         incidentState
       );
 
@@ -166,7 +175,7 @@ export class EnhancedOrchestrator extends Orchestrator {
       }
 
       // Validate generated code for safety
-      const codeValidation = await this.anthropicClient.validateGeneratedCode(
+      const codeValidation = await this.aiClient.validateGeneratedCode(
         remediation.code,
         { service: incidentState.service_name, title: incidentState.title }
       );
@@ -196,7 +205,7 @@ export class EnhancedOrchestrator extends Orchestrator {
       // Enhanced Confidence Protocol
       const shouldAutoExecute = this.evaluateConfidenceEnhanced(
         hypothesis.confidence,
-        sensoResults.maxScore * 100,
+        contextResults.maxScore * 100,
         remediation.confidence,
         remediation.risk,
         remediation.edgeCases
@@ -229,11 +238,11 @@ export class EnhancedOrchestrator extends Orchestrator {
   /**
    * Enhanced confidence evaluation with edge cases
    */
-  evaluateConfidenceEnhanced(clericConfidence, sensoMatchScore, remediationConfidence, risk, edgeCases = []) {
+  evaluateConfidenceEnhanced(hypothesisConfidence, contextMatchScore, remediationConfidence, risk, edgeCases = []) {
     // First apply base evaluation
     const baseResult = this.evaluateConfidence(
-      clericConfidence,
-      sensoMatchScore,
+      hypothesisConfidence,
+      contextMatchScore,
       remediationConfidence,
       risk
     );
@@ -359,7 +368,7 @@ export class EnhancedOrchestrator extends Orchestrator {
         await pagerdutyClient.addNote(
           incidentId,
           `Self-Healing Engine (Enhanced) successfully remediated this incident.\n\n` +
-          `Root Cause: ${incidentState.cleric_hypothesis?.rootCause || 'See investigation'}\n` +
+          `Root Cause: ${incidentState.hypothesis?.rootCause || incidentState.root_cause || 'See investigation'}\n` +
           `Action Taken: Automated remediation executed\n` +
           `Verification: ${verification.passed}/${verification.totalChecks} checks passed`
         );
