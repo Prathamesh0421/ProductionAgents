@@ -50,14 +50,20 @@ List potential risks of the proposed remediation:
 
 Rate the overall risk as: LOW, MEDIUM, or HIGH
 
-## Step 4: Generate Remediation Code
-If risk is acceptable, generate the remediation script. The code must:
-- Be idempotent (safe to run multiple times)
-- Include error handling
-- Log all actions taken
-- Have a dry-run mode where possible
+## Step 4: Generate Reproduction and Remediation Code
+If risk is acceptable, generate two scripts:
 
-Wrap the executable code in <execution_block> tags.
+1. A Reproduction Script:
+   - Must reproduce the issue (fail) when the bug is present.
+   - Must pass (exit code 0) when the bug is fixed.
+   - Wrap in <reproduction_block> tags.
+
+2. A Remediation Script:
+   - The code must be idempotent (safe to run multiple times).
+   - Include error handling.
+   - Log all actions taken.
+   - Have a dry-run mode where possible.
+   - Wrap in <execution_block> tags.
 
 ## Step 5: Verification Steps
 Describe how to verify the fix worked.

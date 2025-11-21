@@ -145,12 +145,10 @@ export class CoderClient {
   }
 
   /**
-   * Execute code in the workspace via agent API
+   * Execute code in the workspace via Coder CLI (SSH)
    * 
-   * WARNING: This implementation uses a hypothetical HTTP POST endpoint for execution.
-   * Coder v2 API typically requires a WebSocket connection (reconnecting-pty) or the `coder` CLI
-   * to execute commands in a workspace. This method may fail with 404/405.
-   * Recommended Fix: Use `coder` CLI in subprocess or implement WebSocket client.
+   * Uses `coder ssh` to execute commands since the API does not expose a direct exec endpoint for agents.
+   * Requires `coder` CLI to be installed and accessible in the environment.
    *
    * @param {string} workspaceName - Workspace name
    * @param {string} code - Code to execute
@@ -164,71 +162,74 @@ export class CoderClient {
     }
 
     try {
-      // First, get workspace agents
-      const workspaceResp = await this.client.get(
-        `/api/v2/users/me/workspace/${workspaceName}`
-      );
-
-      const agents = workspaceResp.data.latest_build?.resources
-        ?.flatMap(r => r.agents || []) || [];
-
-      if (agents.length === 0) {
-        throw new Error('No agents found in workspace');
-      }
-
-      const agentId = agents[0].id;
-
-      // Write code to file and execute
-      const filename = language === 'python' ? 'remediation.py' : 'remediation.sh';
-      const command = language === 'python'
-        ? `python3 /tmp/${filename}`
-        : `bash /tmp/${filename}`;
-
-      // Use the exec endpoint
-      logger.info('Executing remediation in workspace', {
+      logger.info('Preparing remediation execution', {
         workspaceName,
-        agentId,
         language,
       });
 
-      // First write the file
-      const writeCmd = `cat > /tmp/${filename} << 'REMEDIATION_EOF'\n${code}\nREMEDIATION_EOF`;
+      // Encode code to base64 to avoid escaping issues during transfer
+      const codeBase64 = Buffer.from(code).toString('base64');
+      const filename = language === 'python' ? 'remediation.py' : 'remediation.sh';
+      const remotePath = `/tmp/${filename}`;
+      
+      // Construct command chain:
+      // 1. Decode base64 content to file
+      // 2. Execute file with appropriate interpreter
+      const command = language === 'python'
+        ? `echo "${codeBase64}" | base64 -d > ${remotePath} && python3 ${remotePath}`
+        : `echo "${codeBase64}" | base64 -d > ${remotePath} && bash ${remotePath}`;
 
-      await this._execCommand(agentId, writeCmd);
+      // Execute via Coder CLI
+      const env = {
+        ...process.env,
+        CODER_URL: this.baseUrl,
+        CODER_SESSION_TOKEN: this.token,
+      };
 
-      // Then execute
-      const result = await this._execCommand(agentId, command);
+      // Using coder ssh to execute the command
+      // -o StrictHostKeyChecking=no prevents interactive prompts
+      // We use a large timeout because remediation might take time
+      logger.info('Executing command via Coder SSH', { workspaceName });
+      
+      const { stdout, stderr } = await execAsync(
+        `coder ssh ${workspaceName} -- ${command}`,
+        { 
+          env,
+          timeout: 300000 // 5 minutes
+        }
+      );
 
       logger.info('Remediation execution complete', {
-        exitCode: result.exitCode,
-        stdoutLength: result.stdout?.length || 0,
-        hasErrors: !!result.stderr,
+        stdoutLength: stdout?.length || 0,
+        stderrLength: stderr?.length || 0,
       });
 
-      return result;
+      return {
+        exitCode: 0, // execAsync throws on non-zero exit code
+        stdout,
+        stderr
+      };
+
     } catch (error) {
-      logger.error('Workspace execution failed', {
+      // If execAsync fails (non-zero exit code), it throws an error with stdout/stderr
+      if (error.code && typeof error.code === 'number') {
+        logger.warn('Remediation execution failed (non-zero exit code)', {
+          exitCode: error.code,
+          workspaceName,
+        });
+        return {
+          exitCode: error.code,
+          stdout: error.stdout || '',
+          stderr: error.stderr || error.message
+        };
+      }
+
+      logger.error('Workspace execution error', {
         error: error.message,
         workspaceName,
       });
       throw error;
     }
-  }
-
-  /**
-   * Execute a command via agent API
-   */
-  async _execCommand(agentId, command) {
-    const response = await this.client.post(`/api/v2/workspaceagents/${agentId}/exec`, {
-      command: command,
-      timeout: 300, // 5 min timeout
-    });
-
-    return {
-      exitCode: response.data.exit_code || 0,
-      stdout: response.data.stdout || '',
-      stderr: response.data.stderr || '',
-    };
   }
 
   /**

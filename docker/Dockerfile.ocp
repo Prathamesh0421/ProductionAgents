@@ -17,8 +17,11 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install curl for healthcheck
-RUN apk add --no-cache curl
+# Install curl for healthcheck and ssh for Coder CLI
+RUN apk add --no-cache curl openssh-client
+
+# Install Coder CLI
+RUN curl -L https://coder.com/install.sh | sh
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

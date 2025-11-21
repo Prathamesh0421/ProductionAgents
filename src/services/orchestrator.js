@@ -108,6 +108,7 @@ export class Orchestrator {
       // Update state with remediation details
       await stateManager.updateIncidentState(incidentId, {
         remediation_code: remediation.code,
+        reproduction_code: remediation.reproductionCode,
         remediation_language: remediation.language || 'python',
         anthropic_reasoning: remediation.reasoning,
         remediation_risk: remediation.risk,
