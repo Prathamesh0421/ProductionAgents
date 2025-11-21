@@ -136,12 +136,27 @@ app.get('/metrics', async (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  logger.error('Unhandled error', {
-    error: err.message,
+  const statusCode = err.statusCode || 500;
+  const errorCode = err.code || 'INTERNAL_ERROR';
+  const message = err.message || 'Internal server error';
+
+  // Log the error
+  logger.error('Request failed', {
+    error: message,
+    code: errorCode,
+    statusCode,
     stack: err.stack,
     path: req.path,
+    method: req.method,
+    requestId: req.headers['x-request-id'],
   });
-  res.status(500).json({ error: 'Internal server error' });
+
+  // Send response
+  res.status(statusCode).json({
+    error: message,
+    code: errorCode,
+    ...(config.server.env === 'development' && { stack: err.stack }),
+  });
 });
 
 // 404 handler
