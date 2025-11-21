@@ -34,6 +34,9 @@ export const config = {
     vaultId: process.env.SKYFLOW_VAULT_ID,
     vaultUrl: process.env.SKYFLOW_VAULT_URL,
     bearerToken: process.env.SKYFLOW_BEARER_TOKEN,
+    accountId: process.env.SKYFLOW_ACCOUNT_ID,
+    // Custom Detect API URL (defaults to manage.skyflowapis.com)
+    detectApiUrl: process.env.SKYFLOW_DETECT_API_URL,
   },
 
   postman: {

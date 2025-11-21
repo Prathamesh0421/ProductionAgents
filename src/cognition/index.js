@@ -2,9 +2,9 @@
  * Stream B: Cognition & Memory Module
  *
  * The "Brain" of the Self-Healing DevOps Engine
- * - Senso Knowledge Pipeline (B.1)
- * - Anthropic Reasoning Prompts (B.2)
- * - Lightpanda Verification Library (B.3)
+ * - Sanity Knowledge Pipeline (B.1) - Context retrieval via Sanity CMS
+ * - AI Reasoning Prompts (B.2) - Chain-of-Thought with Anthropic/Gemini
+ * - Lightpanda Verification Library (B.3) - High-velocity synthetic testing
  */
 
 // Ingestion Pipeline
@@ -38,8 +38,8 @@ export {
 export { UserJourneyRunner, UserJourney, JourneyTemplates, StepTypes } from './verification/user-journeys.js';
 export { VerificationSwarm, quickSwarm, GeoSwarm } from './verification/swarm.js';
 
-// Enhanced Services
-export { EnhancedSensoClient, enhancedSensoClient } from './services/enhanced-senso.js';
+// Enhanced Services (updated for refactored architecture)
+export { EnhancedSanityClient, enhancedSanityClient } from './services/enhanced-sanity.js';
 export { EnhancedAnthropicClient, enhancedAnthropicClient } from './services/enhanced-anthropic.js';
 export { EnhancedLightpandaClient, enhancedLightpandaClient } from './services/enhanced-lightpanda.js';
 
