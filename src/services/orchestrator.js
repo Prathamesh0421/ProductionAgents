@@ -2,7 +2,7 @@ import config from '../config/index.js';
 import logger from '../utils/logger.js';
 import stateManager, { RedisStateManager } from '../state/redis.js';
 import sensoClient from './senso.js';
-import anthropicClient from './anthropic.js';
+import aiClient from './llm.js';
 import coderClient from './coder.js';
 import lightpandaClient from './lightpanda.js';
 import slackClient from './slack.js';

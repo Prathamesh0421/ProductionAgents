@@ -4,31 +4,22 @@ import logger from '../utils/logger.js';
 import { ConfigurationError, ExternalServiceError } from '../utils/errors.js';
 
 /**
- * Anthropic Claude API Client
- * The "Brain" - Decision & Synthesis engine
+ * Google Gemini API Client
+ * Alternative "Brain" implementation using Google's Generative AI
  *
- * DEPENDENCY: Stream B will implement full prompt engineering
- * Stream A provides the interface and Chain-of-Thought structure
+ * Implements the same interface as AnthropicClient for hot-swapping
  */
 
-export class AnthropicClient {
+export class GeminiClient {
   constructor() {
-    this.apiKey = config.anthropic.apiKey;
-    this.model = config.anthropic.model;
-    this.client = axios.create({
-      baseURL: 'https://api.anthropic.com',
-      headers: {
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      timeout: 120000, // 2 min timeout for complex reasoning
-    });
+    this.apiKey = config.gemini.apiKey;
+    this.model = config.gemini.model;
+    this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
   }
 
   /**
    * System prompt for SRE reasoning
-   * Enforces Chain-of-Thought and safety considerations
+   * Adapted for Gemini's context window
    */
   getSystemPrompt() {
     return `You are a Senior Site Reliability Engineer with extensive experience in incident response and remediation. You are cautious, methodical, and prioritize system stability above all else.
@@ -79,33 +70,52 @@ IMPORTANT SAFETY RULES:
    */
   async generateRemediation(hypothesis, runbookContext, incidentContext = {}) {
     if (!this.apiKey) {
-      logger.warn('Anthropic not configured - cannot generate remediation');
-      return null;
+      logger.warn('Gemini not configured');
+      throw new ConfigurationError('Gemini API Key not configured');
     }
 
-    const userPrompt = this._buildRemediationPrompt(hypothesis, runbookContext, incidentContext);
+    const prompt = this._buildRemediationPrompt(hypothesis, runbookContext, incidentContext);
+    const systemInstruction = this.getSystemPrompt();
 
     try {
-      logger.info('Requesting remediation from Anthropic', {
+      logger.info('Requesting remediation from Gemini', {
         model: this.model,
         hypothesisLength: hypothesis.hypothesis?.length || 0,
       });
 
-      const response = await this.client.post('/v1/messages', {
-        model: this.model,
-        max_tokens: 4096,
-        system: this.getSystemPrompt(),
-        messages: [
-          { role: 'user', content: userPrompt }
-        ],
+      // Gemini API Structure
+      const url = `${this.baseUrl}/${this.model}:generateContent?key=${this.apiKey}`;
+      
+      const requestBody = {
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        systemInstruction: {
+            parts: [{ text: systemInstruction }]
+        },
+        generationConfig: {
+          temperature: 0.2, // Low temperature for more deterministic/safe code
+          maxOutputTokens: 4096,
+        }
+      };
+
+      const response = await axios.post(url, requestBody, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: 120000,
       });
 
-      const content = response.data.content[0]?.text || '';
+      const content = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      if (!content) {
+        throw new Error('Empty response from Gemini');
+      }
 
       // Parse the response
       const result = this._parseRemediationResponse(content);
 
-      logger.info('Remediation generated', {
+      logger.info('Remediation generated (Gemini)', {
         hasCode: !!result.code,
         risk: result.risk,
         reasoningLength: result.reasoning.length,
@@ -113,11 +123,12 @@ IMPORTANT SAFETY RULES:
 
       return result;
     } catch (error) {
-      logger.error('Anthropic request failed', {
+      logger.error('Gemini request failed', {
         error: error.message,
         status: error.response?.status,
+        details: error.response?.data,
       });
-      throw new ExternalServiceError('Anthropic', 'Remediation generation failed', error);
+      throw new ExternalServiceError('Gemini', 'Remediation generation failed', error);
     }
   }
 
@@ -150,7 +161,7 @@ Please analyze this incident and generate a remediation script following the Cha
   }
 
   /**
-   * Parse the remediation response
+   * Parse the remediation response (Same logic as AnthropicClient)
    */
   _parseRemediationResponse(content) {
     const result = {
@@ -167,6 +178,8 @@ Please analyze this incident and generate a remediation script following the Cha
     const codeMatch = content.match(/<execution_block>([\s\S]*?)<\/execution_block>/);
     if (codeMatch) {
       result.code = codeMatch[1].trim();
+      // Clean up markdown code fence if present inside the block
+      result.code = result.code.replace(/^```\w*\n/, '').replace(/\n```$/, '');
     }
 
     // Extract risk level
@@ -206,5 +219,5 @@ Please analyze this incident and generate a remediation script following the Cha
   }
 }
 
-export const anthropicClient = new AnthropicClient();
-export default anthropicClient;
+export const geminiClient = new GeminiClient();
+export default geminiClient;

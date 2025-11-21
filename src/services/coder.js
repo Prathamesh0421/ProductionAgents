@@ -1,6 +1,7 @@
 import axios from 'axios';
 import config from '../config/index.js';
 import logger from '../utils/logger.js';
+import { ConfigurationError, ExternalServiceError } from '../utils/errors.js';
 
 /**
  * Coder API Client
@@ -35,8 +36,8 @@ export class CoderClient {
    */
   async createWorkspace(incidentId, parameters = {}) {
     if (!this.baseUrl || !this.token) {
-      logger.warn('Coder not configured - cannot create workspace');
-      return null;
+      logger.warn('Coder not configured');
+      throw new ConfigurationError('Coder API URL or Token not configured');
     }
 
     const workspaceName = `remediation-${incidentId}-${Date.now()}`.substring(0, 32);

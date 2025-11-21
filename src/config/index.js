@@ -24,6 +24,11 @@ export const config = {
     agentEmail: process.env.CLERIC_AGENT_EMAIL || '',
   },
 
+  // AI Provider Selection
+  llm: {
+    provider: process.env.LLM_PROVIDER || 'anthropic',
+  },
+
   // Stream B dependencies - interfaces only in Stream A
   senso: {
     apiUrl: process.env.SENSO_API_URL,
@@ -33,6 +38,11 @@ export const config = {
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY,
     model: process.env.ANTHROPIC_MODEL || 'claude-3-sonnet-20240229',
+  },
+
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY,
+    model: process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest',
   },
 
   // Stream C dependencies - interfaces only in Stream A

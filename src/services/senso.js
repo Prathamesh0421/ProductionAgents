@@ -1,6 +1,7 @@
 import axios from 'axios';
 import config from '../config/index.js';
 import logger from '../utils/logger.js';
+import { ConfigurationError, ExternalServiceError } from '../utils/errors.js';
 
 /**
  * Senso API Client
@@ -34,8 +35,8 @@ export class SensoClient {
    */
   async search(query, limit = 5) {
     if (!this.baseUrl || !this.apiKey) {
-      logger.warn('Senso not configured - returning empty results');
-      return { results: [], maxScore: 0 };
+      logger.warn('Senso not configured');
+      throw new ConfigurationError('Senso API URL or API Key not configured');
     }
 
     try {
