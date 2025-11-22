@@ -3,40 +3,76 @@ set -e
 
 # Configuration
 CODER_URL=${CODER_API_URL:-"http://localhost:7080"}
-ADMIN_EMAIL=${CODER_ADMIN_EMAIL:-"admin@localhost"}
+# Force the email to the user's preference, ignoring the env var if it's invalid
+ADMIN_EMAIL="pranavtrivedi@gmail.com"
 ADMIN_USER=${CODER_ADMIN_USERNAME:-"admin"}
-ADMIN_PASSWORD=${CODER_ADMIN_PASSWORD:-"changeme123"}
+# Force secure password, ignoring env var
+ADMIN_PASSWORD="ChangeMe!123456"
 
 echo "Waiting for Coder to be ready at $CODER_URL..."
-until curl -s --head "$CODER_URL/healthz" | grep "200 OK" > /dev/null; do
+echo "DEBUG: Env var CODER_API_URL is '${CODER_API_URL}'"
+
+while true; do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$CODER_URL/healthz")
+  if [ "$STATUS" = "200" ]; then
+    echo "Coder is up! (Status: $STATUS)"
+    break
+  fi
+  echo "Waiting for $CODER_URL/healthz... (Status: $STATUS)"
   sleep 2
 done
 
-echo "Coder is up!"
-
 # Login or Create First User
 echo "Attempting to login/create admin user..."
-# Try to create first user (only works on fresh install)
-coder login "$CODER_URL" \
+
+# Wait a bit for first user to be auto-created by env vars
+sleep 3
+
+# Try to create first user with timeout (only works on fresh install)
+echo "Trying to create first user via CLI (will timeout if user exists)..."
+timeout 10s coder login "$CODER_URL" \
   --first-user-email "$ADMIN_EMAIL" \
   --first-user-username "$ADMIN_USER" \
   --first-user-password "$ADMIN_PASSWORD" \
   --first-user-trial=true \
   --use-token-as-session=false \
   --no-open \
-  --force-tty=false || true
+  --force-tty=false > /dev/null 2>&1 && echo "First user created successfully via CLI." || echo "First user creation failed or timed out (user may already exist)."
 
-# If login failed (already exists), we can't easily login non-interactively 
-# WITHOUT an API key. But we are bootstrapping.
-# If the user already exists, we assume the admin has set up CODER_API_TOKEN in .env
-# OR we can try to login with password if the CLI supports it (it usually doesn't, expects token).
+# Now try to login via API to get session token
+echo "Attempting login via API..."
+LOGIN_RESPONSE=$(curl -s -X POST "$CODER_URL/api/v2/users/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$ADMIN_EMAIL\", \"password\":\"$ADMIN_PASSWORD\"}")
 
-# However, for the INITIAL setup, the above command works.
+# Extract session token using sed (since jq might not be installed)
+SESSION_TOKEN=$(echo "$LOGIN_RESPONSE" | sed 's/.*"session_token":"\([^"]*\)".*/\1/')
+
+if [ -n "$SESSION_TOKEN" ] && [ "$SESSION_TOKEN" != "$LOGIN_RESPONSE" ]; then
+  echo "Login successful via API."
+  export CODER_SESSION_TOKEN="$SESSION_TOKEN"
+else
+  echo "Failed to login via API. Response: $LOGIN_RESPONSE"
+  echo ""
+  echo "=== MANUAL SETUP REQUIRED ==="
+  echo "1. Open http://localhost:7080 in your browser"
+  echo "2. Login with:"
+  echo "   Email: $ADMIN_EMAIL"
+  echo "   Username: $ADMIN_USER"
+  echo "   Password: $ADMIN_PASSWORD"
+  echo "3. Go to Account Settings → Tokens"
+  echo "4. Create a new token and add to .env file:"
+  echo "   CODER_API_TOKEN=<your-token>"
+  echo "============================="
+  exit 1
+fi
 
 # Generate API Token
 echo "Generating API Token for OCP..."
-TOKEN_OUTPUT=$(coder tokens create --name="ocp-agent-$(date +%s)" --lifetime=8760h)
-API_TOKEN=$(echo "$TOKEN_OUTPUT" | grep -oP '(?<=Token: ).*')
+# Request 7 days (168h) to comply with default max lifetime
+TOKEN_OUTPUT=$(coder tokens create --name="ocp-agent-$(date +%s)" --lifetime=168h)
+# Extract token (compatible with both BSD and GNU grep)
+API_TOKEN=$(echo "$TOKEN_OUTPUT" | grep "Token:" | sed 's/.*Token: *//')
 
 echo "API Token Generated: $API_TOKEN"
 

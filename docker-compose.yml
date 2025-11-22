@@ -8,6 +8,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.ocp
+    user: "0:0"  # Run as root for Docker socket access
     ports:
       - "3000:3000"
     environment:
@@ -19,6 +20,8 @@ services:
       - CODER_API_URL=http://coder:7080
     env_file:
       - .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - redis
       - lightpanda
@@ -63,6 +66,7 @@ services:
   # ============================================
   coder:
     image: ghcr.io/coder/coder:latest
+    user: "0:0"  # Run as root for Docker socket access
     ports:
       - "7080:7080"
     environment:
@@ -70,9 +74,9 @@ services:
       - CODER_HTTP_ADDRESS=0.0.0.0:7080
       - CODER_PG_CONNECTION_URL=postgresql://coder:coder@postgres:5432/coder?sslmode=disable
       # First run creates admin user - set these for automatic setup
-      - CODER_FIRST_USER_EMAIL=${CODER_ADMIN_EMAIL:-admin@localhost}
+      - CODER_FIRST_USER_EMAIL=${CODER_ADMIN_EMAIL:-admin@example.com}
       - CODER_FIRST_USER_USERNAME=${CODER_ADMIN_USERNAME:-admin}
-      - CODER_FIRST_USER_PASSWORD=${CODER_ADMIN_PASSWORD:-changeme123}
+      - CODER_FIRST_USER_PASSWORD=${CODER_ADMIN_PASSWORD:-ChangeMe!123456}
       # Telemetry (disable for privacy)
       - CODER_TELEMETRY_ENABLE=false
       # Session/Token config

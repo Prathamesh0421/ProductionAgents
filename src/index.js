@@ -111,6 +111,35 @@ app.post('/debug/trigger', async (req, res) => {
   }
 });
 
+// Debug approve endpoint (for testing without Slack)
+app.post('/debug/approve', async (req, res) => {
+  if (config.server.env === 'production') {
+    return res.status(403).json({ error: 'Not available in production' });
+  }
+
+  try {
+    const { incidentId } = req.body;
+    if (!incidentId) {
+      return res.status(400).json({ error: 'incidentId required' });
+    }
+
+    // Update state to approved
+    await stateManager.updateIncidentState(incidentId, {
+      human_approved: true,
+      approved_by: 'debug-user',
+      approved_at: new Date().toISOString(),
+    });
+
+    // Continue to execution
+    await orchestrator.executeRemediation(incidentId);
+
+    res.json({ status: 'approved', incidentId });
+  } catch (error) {
+    logger.error('Debug approve failed', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Metrics endpoint (basic)
 app.get('/metrics', async (req, res) => {
   try {

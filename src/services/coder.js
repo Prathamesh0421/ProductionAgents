@@ -1,14 +1,19 @@
 import axios from 'axios';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import config from '../config/index.js';
 import logger from '../utils/logger.js';
 import { ConfigurationError, ExternalServiceError } from '../utils/errors.js';
 
+const execAsync = promisify(exec);
+
 /**
- * Coder API Client
+ * Coder API Client with Docker Fallback
  * The "Hands" - Sandboxed Execution Environment
  *
- * DEPENDENCY: Stream C will implement Terraform templates and workspace setup
- * Stream A provides the v2 API interface
+ * Supports two modes:
+ * 1. Coder workspaces (when properly configured)
+ * 2. Direct Docker execution (fallback for local development)
  */
 
 export class CoderClient {
@@ -16,13 +21,21 @@ export class CoderClient {
     this.baseUrl = config.coder.apiUrl;
     this.token = config.coder.apiToken;
     this.templateId = config.coder.templateId;
-    this.client = axios.create({
-      baseURL: this.baseUrl,
-      headers: {
-        'Coder-Session-Token': this.token,
-        'Content-Type': 'application/json',
-      },
-      timeout: 60000,
+    this.useDirectDocker = !this.token || !this.templateId;
+
+    if (!this.useDirectDocker) {
+      this.client = axios.create({
+        baseURL: this.baseUrl,
+        headers: {
+          'Coder-Session-Token': this.token,
+          'Content-Type': 'application/json',
+        },
+        timeout: 60000,
+      });
+    }
+
+    logger.info('Coder client initialized', {
+      mode: this.useDirectDocker ? 'direct-docker' : 'coder-workspaces'
     });
   }
 
@@ -236,6 +249,10 @@ export class CoderClient {
    * Delete/destroy workspace after use
    */
   async deleteWorkspace(workspaceName) {
+    if (this.useDirectDocker) {
+      return this.deleteDockerContainer(workspaceName);
+    }
+
     if (!this.baseUrl || !this.token) {
       return false;
     }
@@ -255,6 +272,158 @@ export class CoderClient {
       });
       return false;
     }
+  }
+
+  // ==========================================
+  // Direct Docker Execution (Fallback Mode)
+  // ==========================================
+
+  /**
+   * Create a Docker container for remediation (fallback mode)
+   */
+  async createDockerContainer(incidentId, parameters = {}) {
+    const containerName = `remediation-${incidentId}-${Date.now()}`.substring(0, 32).replace(/[^a-z0-9-]/g, '-');
+
+    try {
+      logger.info('Creating Docker container for remediation', { containerName });
+
+      // Create isolated container with resource limits
+      const envVars = [
+        `-e INCIDENT_ID=${incidentId}`,
+        `-e SERVICE_NAME=${parameters.serviceName || ''}`,
+      ];
+
+      const cmd = `docker run -d --name ${containerName} \
+        --network productionagents_ocp-network \
+        --memory=512m --cpus=0.5 \
+        ${envVars.join(' ')} \
+        python:3.11-slim tail -f /dev/null`;
+
+      await execAsync(cmd);
+
+      logger.info('Docker container created', { containerName });
+      return {
+        workspaceId: containerName,
+        name: containerName,
+      };
+    } catch (error) {
+      logger.error('Failed to create Docker container', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Wait for Docker container to be ready
+   */
+  async waitForDockerContainer(containerName, maxWaitMs = 30000) {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        const { stdout } = await execAsync(`docker inspect -f '{{.State.Running}}' ${containerName}`);
+        if (stdout.trim() === 'true') {
+          return true;
+        }
+      } catch {
+        // Container not ready yet
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    return false;
+  }
+
+  /**
+   * Execute code in Docker container (fallback mode)
+   */
+  async executeInDocker(containerName, code, language = 'python') {
+    try {
+      logger.info('Executing in Docker container', { containerName, language });
+
+      // Write code to temp file and execute
+      const filename = language === 'python' ? 'remediation.py' : 'remediation.sh';
+      const codeBase64 = Buffer.from(code).toString('base64');
+
+      const command = language === 'python'
+        ? `echo "${codeBase64}" | base64 -d > /tmp/${filename} && python3 /tmp/${filename}`
+        : `echo "${codeBase64}" | base64 -d > /tmp/${filename} && bash /tmp/${filename}`;
+
+      const { stdout, stderr } = await execAsync(
+        `docker exec ${containerName} sh -c '${command}'`,
+        { timeout: 300000 }
+      );
+
+      logger.info('Docker execution complete', {
+        containerName,
+        stdoutLength: stdout?.length || 0,
+      });
+
+      return { exitCode: 0, stdout, stderr };
+    } catch (error) {
+      logger.error('Docker execution failed', { error: error.message });
+      return {
+        exitCode: error.code || 1,
+        stdout: error.stdout || '',
+        stderr: error.stderr || error.message,
+      };
+    }
+  }
+
+  /**
+   * Delete Docker container
+   */
+  async deleteDockerContainer(containerName) {
+    try {
+      await execAsync(`docker rm -f ${containerName}`);
+      logger.info('Docker container deleted', { containerName });
+      return true;
+    } catch (error) {
+      logger.error('Failed to delete container', { error: error.message });
+      return false;
+    }
+  }
+
+  // ==========================================
+  // Unified Interface (auto-selects mode)
+  // ==========================================
+
+  /**
+   * Create sandbox (unified interface)
+   */
+  async createSandbox(incidentId, parameters = {}) {
+    if (this.useDirectDocker) {
+      return this.createDockerContainer(incidentId, parameters);
+    }
+    return this.createWorkspace(incidentId, parameters);
+  }
+
+  /**
+   * Wait for sandbox (unified interface)
+   */
+  async waitForSandbox(name, maxWaitMs = 300000) {
+    if (this.useDirectDocker) {
+      return this.waitForDockerContainer(name, maxWaitMs);
+    }
+    return this.waitForWorkspace(name, maxWaitMs);
+  }
+
+  /**
+   * Execute in sandbox (unified interface)
+   */
+  async executeInSandbox(name, code, language = 'python') {
+    if (this.useDirectDocker) {
+      return this.executeInDocker(name, code, language);
+    }
+    return this.executeInWorkspace(name, code, language);
+  }
+
+  /**
+   * Delete sandbox (unified interface)
+   */
+  async deleteSandbox(name) {
+    if (this.useDirectDocker) {
+      return this.deleteDockerContainer(name);
+    }
+    return this.deleteWorkspace(name);
   }
 }
 

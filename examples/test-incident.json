@@ -1,0 +1,5 @@
+{
+  "incidentId": "test-incident-001",
+  "hypothesis": "Application crash on /users/99 endpoint. TypeError: Cannot read property name of null. The user lookup returns null for userId 99 but the code does not handle this case, causing a crash when accessing user.name. Affected service: buggy-app. Recommendation: Add null check before accessing user properties.",
+  "confidence": 85
+}
