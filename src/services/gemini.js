@@ -184,6 +184,15 @@ Please analyze this incident and generate a remediation script following the Cha
       result.code = result.code.replace(/^```\w*\n/, '').replace(/\n```$/, '');
     }
 
+    // Fallback: Detect language from shebang if not explicitly set
+    if (result.code && (!codeMatch || !codeMatch[1])) {
+      if (result.code.startsWith('#!/bin/bash') || result.code.startsWith('#!/bin/sh')) {
+        result.language = 'bash';
+      } else if (result.code.startsWith('#!/usr/bin/env python') || result.code.startsWith('#!/usr/bin/python')) {
+        result.language = 'python';
+      }
+    }
+
     // Extract risk level
     const riskMatch = content.match(/(?:overall\s*)?risk[:\s]+(?:is\s+)?(LOW|MEDIUM|HIGH)/i);
     if (riskMatch) {

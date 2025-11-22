@@ -261,30 +261,30 @@ export class Orchestrator {
         return;
       }
 
-      // Create Coder workspace
-      const workspace = await coderClient.createWorkspace(incidentId, {
-        SERVICE_NAME: incidentState.service_name || '',
-        INCIDENT_TITLE: incidentState.title || '',
+      // Create sandbox (Coder workspace or Docker container)
+      const sandbox = await coderClient.createSandbox(incidentId, {
+        serviceName: incidentState.service_name || '',
+        incidentTitle: incidentState.title || '',
       });
 
-      if (!workspace) {
-        throw new Error('Failed to create workspace');
+      if (!sandbox) {
+        throw new Error('Failed to create sandbox');
       }
 
       await stateManager.updateIncidentState(incidentId, {
-        coder_workspace_id: workspace.workspaceId,
-        coder_workspace_name: workspace.name,
+        sandbox_id: sandbox.workspaceId,
+        sandbox_name: sandbox.name,
       });
 
-      // Wait for workspace to be ready
-      const ready = await coderClient.waitForWorkspace(workspace.name);
+      // Wait for sandbox to be ready
+      const ready = await coderClient.waitForSandbox(sandbox.name);
       if (!ready) {
-        throw new Error('Workspace failed to become ready');
+        throw new Error('Sandbox failed to become ready');
       }
 
       // Execute the remediation code
-      const execResult = await coderClient.executeInWorkspace(
-        workspace.name,
+      const execResult = await coderClient.executeInSandbox(
+        sandbox.name,
         incidentState.remediation_code,
         incidentState.remediation_language || 'python'
       );

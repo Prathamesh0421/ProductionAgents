@@ -18,13 +18,13 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install curl for healthcheck and ssh for Coder CLI
-RUN apk add --no-cache curl openssh-client
+# Install curl for healthcheck, ssh for Coder CLI, and docker-cli for sandbox execution
+RUN apk add --no-cache curl openssh-client docker-cli
 
 # Install Coder CLI
 RUN curl -L https://coder.com/install.sh | sh
 
-# Create non-root user
+# Create non-root user with docker group access
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
